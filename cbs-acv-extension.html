@@ -567,76 +567,62 @@ function fmtDate(dt) {
 // ── Tableau field name normalizer ─────────────────────────────────────────────
 // Maps flexible Tableau column names to our internal field keys.
 const FIELD_MAP = {
-  // account / opp — calc field names AND raw Snowflake column names
+  // account / opp
   'Account Name':                     'co',
   'ACCOUNT_NAME':                     'co',
   'COMBO_COMPANY_NAME':               'co',
-  'Combo Company Name':               'co',
   'Opportunity Name':                 'on_name',
   'OPPORTUNITY_NAME':                 'on_name',
   'Opportunity ID':                   'id',
   'OPPORTUNITY_ID':                   'id',
-  // ACV
+  // ACV amount — PDS calculated field is "Closed Won Amount"
+  'Closed Won Amount':                'v',
+  'SUM(Closed Won Amount)':           'v',
+  'AGG(Closed Won Amount)':           'v',
   'ACV':                              'v',
   'Amount USD':                       'v',
   'AMOUNT_USD':                       'v',
   'SUM(AMOUNT_USD)':                  'v',
-  'AGG(SUM(AMOUNT_USD))':             'v',
   'Amount':                           'v',
-  'V':                                'v',
-  // cloud routing — the PDS field is APM_SPECIALIST_CLOUD_ROUTING
-  'Cloud':                            'cl',
-  'CLOUD_ROUTING':                    'cl',
-  'Cloud Routing':                    'cl',
+  // cloud routing
+  'APM Specialist Cloud Routing':     'cl',
   'APM_SPECIALIST_CLOUD_ROUTING':     'cl',
-  'Apm Specialist Cloud Routing':     'cl',
-  'Specialist Cloud Routing':         'cl',
+  'Cloud':                            'cl',
+  'Cloud Routing':                    'cl',
   'Cloud Name':                       'cl',
-  'CLOUD_NAME':                       'cl',
   // L2 product
-  'L2':                               'l2',
-  'LEVEL_2':                          'l2',
-  'Level 2':                          'l2',
+  'APM Product Level 2':              'l2',
   'APM_PRODUCT_LEVEL_2':              'l2',
-  'Apm Product Level 2':              'l2',
-  'Product Level 2':                  'l2',
-  // fiscal period — Tableau may show integer quarter or "FQ 3" string
+  'L2':                               'l2',
+  'Level 2':                          'l2',
+  // fiscal period — Tableau date parts from PDS
+  'Year of Close Date':               'cy',
+  'Quarter of Close Date':            'cq',
+  'Month of Close Date':              'cm',
   'Fiscal Year':                      'cy',
-  'FISCAL_YEAR':                      'cy',
   'FISCAL_YEAR_VALUE':                'cy',
-  'Fiscal Year Value':                'cy',
   'Fiscal Quarter':                   'cq',
-  'FISCAL_QUARTER':                   'cq',
   'FISCAL_QUARTER_VALUE':             'cq',
-  'Fiscal Quarter Value':             'cq',
+  'Fiscal Quarter Number':            'cq',
   'Fiscal Month':                     'cm',
-  'FISCAL_MONTH':                     'cm',
   'FISCAL_MONTH_VALUE':               'cm',
-  'Fiscal Month Value':               'cm',
   // close date
   'Close Date':                       'dt',
   'CLOSE_DATE':                       'dt',
-  // hierarchy — Snowflake raw column names
-  'AVP':                              'av',
-  'LEVEL_6':                          'av',
-  'Level 6':                          'av',
+  // specialist hierarchy — confirmed from PDS View Data
+  'Specialist Level 04 User Name':    'av',
+  'Specialist Level 05 User Name':    'rv',
+  'Specialist Level 06 User Name':    'rv',
+  'Specialist Level 07 User Name':    'rv',
+  'Specialist User Name':             'ae',
+  // fallbacks
   'LEVEL_6_ROLEHIER_USER_NAME':       'av',
-  'Level 6 Rolehier User Name':       'av',
-  'RVP':                              'rv',
-  'LEVEL_7':                          'rv',
-  'Level 7':                          'rv',
   'LEVEL_7_ROLEHIER_USER_NAME':       'rv',
-  'Level 7 Rolehier User Name':       'rv',
-  'AE':                               'ae',
   'USER_NAME':                        'ae',
-  'AE Name':                          'ae',
-  'Ae':                               'ae',
-  'User Name':                        'ae',
   // stage
-  'Stage':                            'sg',
-  'STAGENAME':                        'sg',
   'Stage Name':                       'sg',
   'STAGE_NAME':                       'sg',
+  'Stage':                            'sg',
   'Forecast Category':                'sg',
   'FORECAST_CATEGORY_NAME':           'sg',
 };
@@ -776,15 +762,11 @@ async function loadWorksheet(wsName) {
     const opts = { maxRows: 100000 };
     const fullData = await ws.getUnderlyingTableDataAsync(logicalTableId, opts);
 
-    // DEBUG: show exact column names so we can fix FIELD_MAP
-    showDebugColumns(fullData.columns);
-
     ALL_ROWS = parseDataTable(fullData);
 
     if (ALL_ROWS.length === 0) {
       // Try getSummaryDataAsync as fallback
       const summary = await ws.getSummaryDataAsync();
-      showDebugColumns(summary.columns);
       ALL_ROWS = parseDataTable(summary);
     }
 
@@ -809,35 +791,6 @@ async function loadWorksheet(wsName) {
     showError('Error reading worksheet data: ' + err.message + '. Ensure the extension has "full data" permission and the worksheet is fully loaded.');
     console.error(err);
   }
-}
-
-// ── Debug: show raw Tableau column names ─────────────────────────────────────
-function showDebugColumns(columns) {
-  const existing = document.getElementById('debug-overlay');
-  if (existing) existing.remove();
-
-  const names = columns.map(c => c.fieldName + ' [' + c.dataType + ']');
-  const overlay = document.createElement('div');
-  overlay.id = 'debug-overlay';
-  overlay.style.cssText = `
-    position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:9999;
-    overflow:auto;padding:20px;font-family:monospace;font-size:12px;color:#fff;
-  `;
-  overlay.innerHTML = `
-    <div style="max-width:700px;margin:0 auto;">
-      <div style="font-size:15px;font-weight:700;margin-bottom:12px;color:#9dc6e0;">
-        DEBUG — Tableau Column Names (${columns.length} columns)
-      </div>
-      <div style="margin-bottom:12px;color:#aaa;font-size:11px;">
-        Copy this list and send it. Click anywhere to dismiss.
-      </div>
-      <div style="background:#111;padding:14px;border-radius:6px;line-height:1.8;">
-        ${names.map(n => `<div>${n}</div>`).join('')}
-      </div>
-    </div>
-  `;
-  overlay.addEventListener('click', () => overlay.remove());
-  document.body.appendChild(overlay);
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
