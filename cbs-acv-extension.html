@@ -762,11 +762,14 @@ async function loadWorksheet(wsName) {
     const opts = { maxRows: 100000 };
     const fullData = await ws.getUnderlyingTableDataAsync(logicalTableId, opts);
 
+    // Show all column names so we can confirm the exact field names
+    showDebugColumns(fullData.columns, fullData.data[0]);
+
     ALL_ROWS = parseDataTable(fullData);
 
     if (ALL_ROWS.length === 0) {
-      // Try getSummaryDataAsync as fallback
       const summary = await ws.getSummaryDataAsync();
+      showDebugColumns(summary.columns, summary.data[0]);
       ALL_ROWS = parseDataTable(summary);
     }
 
@@ -791,6 +794,37 @@ async function loadWorksheet(wsName) {
     showError('Error reading worksheet data: ' + err.message + '. Ensure the extension has "full data" permission and the worksheet is fully loaded.');
     console.error(err);
   }
+}
+
+// ── Debug: show every column name + first row value ──────────────────────────
+function showDebugColumns(columns, firstRow) {
+  const existing = document.getElementById('debug-overlay');
+  if (existing) existing.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'debug-overlay';
+  overlay.style.cssText = `
+    position:fixed;inset:0;background:rgba(0,0,0,0.93);z-index:9999;
+    overflow:auto;padding:20px;font-family:monospace;font-size:11px;color:#fff;
+  `;
+  const rows = columns.map((c, i) => {
+    const val = firstRow ? String(firstRow[i].formattedValue || firstRow[i].value || '') : '';
+    const mapped = FIELD_MAP[c.fieldName] ? `<span style="color:#4ade80"> → ${FIELD_MAP[c.fieldName]}</span>` : `<span style="color:#f87171"> ✗ unmapped</span>`;
+    return `<div><span style="color:#9dc6e0">${c.fieldName}</span>${mapped} &nbsp; <span style="color:#aaa">[${c.dataType}] ${val.slice(0,40)}</span></div>`;
+  });
+  overlay.innerHTML = `
+    <div style="max-width:800px;margin:0 auto;">
+      <div style="font-size:14px;font-weight:700;margin-bottom:4px;color:#fff;">
+        DEBUG — ${columns.length} columns &nbsp;<span style="font-size:11px;color:#aaa">(click to dismiss)</span>
+      </div>
+      <div style="margin-bottom:10px;font-size:11px;color:#f87171;">
+        Red = unmapped (won't show in table). Screenshot this and send it.
+      </div>
+      <div style="background:#111;padding:12px;border-radius:6px;line-height:1.9;">
+        ${rows.join('')}
+      </div>
+    </div>`;
+  overlay.addEventListener('click', () => overlay.remove());
+  document.body.appendChild(overlay);
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
