@@ -776,11 +776,15 @@ async function loadWorksheet(wsName) {
     const opts = { maxRows: 100000 };
     const fullData = await ws.getUnderlyingTableDataAsync(logicalTableId, opts);
 
+    // DEBUG: show exact column names so we can fix FIELD_MAP
+    showDebugColumns(fullData.columns);
+
     ALL_ROWS = parseDataTable(fullData);
 
     if (ALL_ROWS.length === 0) {
       // Try getSummaryDataAsync as fallback
       const summary = await ws.getSummaryDataAsync();
+      showDebugColumns(summary.columns);
       ALL_ROWS = parseDataTable(summary);
     }
 
@@ -805,6 +809,35 @@ async function loadWorksheet(wsName) {
     showError('Error reading worksheet data: ' + err.message + '. Ensure the extension has "full data" permission and the worksheet is fully loaded.');
     console.error(err);
   }
+}
+
+// ── Debug: show raw Tableau column names ─────────────────────────────────────
+function showDebugColumns(columns) {
+  const existing = document.getElementById('debug-overlay');
+  if (existing) existing.remove();
+
+  const names = columns.map(c => c.fieldName + ' [' + c.dataType + ']');
+  const overlay = document.createElement('div');
+  overlay.id = 'debug-overlay';
+  overlay.style.cssText = `
+    position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:9999;
+    overflow:auto;padding:20px;font-family:monospace;font-size:12px;color:#fff;
+  `;
+  overlay.innerHTML = `
+    <div style="max-width:700px;margin:0 auto;">
+      <div style="font-size:15px;font-weight:700;margin-bottom:12px;color:#9dc6e0;">
+        DEBUG — Tableau Column Names (${columns.length} columns)
+      </div>
+      <div style="margin-bottom:12px;color:#aaa;font-size:11px;">
+        Copy this list and send it. Click anywhere to dismiss.
+      </div>
+      <div style="background:#111;padding:14px;border-radius:6px;line-height:1.8;">
+        ${names.map(n => `<div>${n}</div>`).join('')}
+      </div>
+    </div>
+  `;
+  overlay.addEventListener('click', () => overlay.remove());
+  document.body.appendChild(overlay);
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
