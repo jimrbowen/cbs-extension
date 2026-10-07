@@ -215,13 +215,7 @@
     <select id="f-ae" class="filter-select"><option value="">All AEs</option></select>
 
     <div class="filter-label">Fiscal Quarter</div>
-    <select id="f-fq" class="filter-select">
-      <option value="">All Quarters</option>
-      <option value="1">Q1</option>
-      <option value="2">Q2</option>
-      <option value="3">Q3</option>
-      <option value="4">Q4</option>
-    </select>
+    <select id="f-fq" class="filter-select"><option value="">All Quarters</option></select>
 
     <div class="filter-label">Cloud</div>
     <select id="f-cloud" class="filter-select"><option value="">All Clouds</option></select>
@@ -425,13 +419,13 @@ search.addEventListener('input', render);
 
 // ── Populate filter dropdowns from data ───────────────────────────────────────
 function populateFilters(rows) {
-  function opts(sel, vals) {
+  function opts(sel, vals, labelFn) {
     const cur = sel.value;
     while (sel.options.length > 1) sel.remove(1);
     [...vals].sort().forEach(v => {
       if (!v) return;
       const o = document.createElement('option');
-      o.value = v; o.textContent = v;
+      o.value = v; o.textContent = labelFn ? labelFn(v) : v;
       sel.appendChild(o);
     });
     if (cur) sel.value = cur;
@@ -440,6 +434,8 @@ function populateFilters(rows) {
   opts(fRvp,   new Set(rows.map(r => r.rv)));
   opts(fAe,    new Set(rows.map(r => r.ae)));
   opts(fCloud, new Set(rows.map(r => r.cl)));
+  // FQ: store normalized key (1/2/3/4), display as "FQ 1" etc.
+  opts(fFq,    new Set(rows.map(r => r.cq)), v => 'FQ ' + v);
 }
 
 // ── Filter logic ──────────────────────────────────────────────────────────────
@@ -447,16 +443,16 @@ function filtered() {
   const avp   = fAvp.value;
   const rvp   = fRvp.value;
   const ae    = fAe.value;
-  const fq    = fFq.value;
+  const fq    = fFq.value;   // stored as "1"/"2"/"3"/"4"
   const cloud = fCloud.value;
   const q     = search.value.toLowerCase().trim();
 
   return ALL_ROWS.filter(r => {
-    if (avp   && r.av !== avp)   return false;
-    if (rvp   && r.rv !== rvp)   return false;
-    if (ae    && r.ae !== ae)    return false;
-    if (fq    && String(r.cq) !== fq) return false;
-    if (cloud && r.cl !== cloud) return false;
+    if (avp   && r.av !== avp)                return false;
+    if (rvp   && r.rv !== rvp)                return false;
+    if (ae    && r.ae !== ae)                 return false;
+    if (fq    && String(r.cq) !== String(fq)) return false;
+    if (cloud && r.cl !== cloud)              return false;
     if (q) {
       const hay = (r.co + ' ' + (r.on_name || '')).toLowerCase();
       if (!hay.includes(q)) return false;
@@ -509,6 +505,8 @@ function updateCards(rows) {
 function render() {
   const rows = filtered();
 
+  buildExecStrip(rows);   // update exec strip to reflect current filters
+
   // sort
   rows.sort((a, b) => {
     let av = a[SORT_COL] ?? '', bv = b[SORT_COL] ?? '';
@@ -541,7 +539,7 @@ function render() {
       <td class="col-acv">${fmtM(r.v)}</td>
       <td><span class="pill ${cloudClass(r.cl)}">${esc(r.cl || 'Other')}</span></td>
       <td class="col-hier">${esc(r.l2 || '')}</td>
-      <td style="white-space:nowrap">Q${r.cq || '?'}</td>
+      <td style="white-space:nowrap">FQ ${r.cq || '?'}</td>
       <td class="col-date">${fmtDate(r.dt)}</td>
       <td><span class="stage-badge ${stageClass}">${esc(r.sg || '')}</span></td>
       <td class="col-hier">${esc(r.av || '')}</td>
@@ -569,52 +567,78 @@ function fmtDate(dt) {
 // ── Tableau field name normalizer ─────────────────────────────────────────────
 // Maps flexible Tableau column names to our internal field keys.
 const FIELD_MAP = {
-  // account / opp
-  'Account Name':       'co',
-  'ACCOUNT_NAME':       'co',
-  'Opportunity Name':   'on_name',
-  'OPPORTUNITY_NAME':   'on_name',
-  'Opportunity ID':     'id',
-  'OPPORTUNITY_ID':     'id',
+  // account / opp — calc field names AND raw Snowflake column names
+  'Account Name':                     'co',
+  'ACCOUNT_NAME':                     'co',
+  'COMBO_COMPANY_NAME':               'co',
+  'Combo Company Name':               'co',
+  'Opportunity Name':                 'on_name',
+  'OPPORTUNITY_NAME':                 'on_name',
+  'Opportunity ID':                   'id',
+  'OPPORTUNITY_ID':                   'id',
   // ACV
-  'ACV':                'v',
-  'Amount USD':         'v',
-  'AMOUNT_USD':         'v',
-  'SUM(AMOUNT_USD)':    'v',
-  'Amount':             'v',
-  // cloud
-  'Cloud':              'cl',
-  'CLOUD_ROUTING':      'cl',
-  'Cloud Routing':      'cl',
-  // segment / L2
-  'L2':                 'l2',
-  'LEVEL_2':            'l2',
-  'Level 2':            'l2',
-  // fiscal
-  'Fiscal Year':        'cy',
-  'FISCAL_YEAR':        'cy',
-  'Fiscal Quarter':     'cq',
-  'FISCAL_QUARTER':     'cq',
-  'Fiscal Month':       'cm',
-  'FISCAL_MONTH':       'cm',
+  'ACV':                              'v',
+  'Amount USD':                       'v',
+  'AMOUNT_USD':                       'v',
+  'SUM(AMOUNT_USD)':                  'v',
+  'AGG(SUM(AMOUNT_USD))':             'v',
+  'Amount':                           'v',
+  'V':                                'v',
+  // cloud routing — the PDS field is APM_SPECIALIST_CLOUD_ROUTING
+  'Cloud':                            'cl',
+  'CLOUD_ROUTING':                    'cl',
+  'Cloud Routing':                    'cl',
+  'APM_SPECIALIST_CLOUD_ROUTING':     'cl',
+  'Apm Specialist Cloud Routing':     'cl',
+  'Specialist Cloud Routing':         'cl',
+  'Cloud Name':                       'cl',
+  'CLOUD_NAME':                       'cl',
+  // L2 product
+  'L2':                               'l2',
+  'LEVEL_2':                          'l2',
+  'Level 2':                          'l2',
+  'APM_PRODUCT_LEVEL_2':              'l2',
+  'Apm Product Level 2':              'l2',
+  'Product Level 2':                  'l2',
+  // fiscal period — Tableau may show integer quarter or "FQ 3" string
+  'Fiscal Year':                      'cy',
+  'FISCAL_YEAR':                      'cy',
+  'FISCAL_YEAR_VALUE':                'cy',
+  'Fiscal Year Value':                'cy',
+  'Fiscal Quarter':                   'cq',
+  'FISCAL_QUARTER':                   'cq',
+  'FISCAL_QUARTER_VALUE':             'cq',
+  'Fiscal Quarter Value':             'cq',
+  'Fiscal Month':                     'cm',
+  'FISCAL_MONTH':                     'cm',
+  'FISCAL_MONTH_VALUE':               'cm',
+  'Fiscal Month Value':               'cm',
   // close date
-  'Close Date':         'dt',
-  'CLOSE_DATE':         'dt',
-  // hierarchy
-  'AVP':                'av',
-  'LEVEL_6':            'av',
-  'Level 6':            'av',
-  'RVP':                'rv',
-  'LEVEL_7':            'rv',
-  'Level 7':            'rv',
-  'AE':                 'ae',
-  'USER_NAME':          'ae',
-  'AE Name':            'ae',
+  'Close Date':                       'dt',
+  'CLOSE_DATE':                       'dt',
+  // hierarchy — Snowflake raw column names
+  'AVP':                              'av',
+  'LEVEL_6':                          'av',
+  'Level 6':                          'av',
+  'LEVEL_6_ROLEHIER_USER_NAME':       'av',
+  'Level 6 Rolehier User Name':       'av',
+  'RVP':                              'rv',
+  'LEVEL_7':                          'rv',
+  'Level 7':                          'rv',
+  'LEVEL_7_ROLEHIER_USER_NAME':       'rv',
+  'Level 7 Rolehier User Name':       'rv',
+  'AE':                               'ae',
+  'USER_NAME':                        'ae',
+  'AE Name':                          'ae',
+  'Ae':                               'ae',
+  'User Name':                        'ae',
   // stage
-  'Stage':              'sg',
-  'STAGENAME':          'sg',
-  'Stage Name':         'sg',
-  'Forecast Category':  'sg',
+  'Stage':                            'sg',
+  'STAGENAME':                        'sg',
+  'Stage Name':                       'sg',
+  'STAGE_NAME':                       'sg',
+  'Forecast Category':                'sg',
+  'FORECAST_CATEGORY_NAME':           'sg',
 };
 
 // ── Parse rows from a Tableau DataTable ──────────────────────────────────────
@@ -636,6 +660,13 @@ function parseDataTable(dataTable) {
         obj[colMap[i]] = cell.value;
       }
     });
+    // normalize cq: "FQ 3" → "3", 3 → "3", so filter comparisons always work
+    if (obj.cq !== undefined) {
+      const raw = String(obj.cq).trim();
+      obj.cq = raw.replace(/^FQ\s*/i, '');
+    }
+    // normalize v to number
+    if (obj.v !== undefined) obj.v = parseFloat(obj.v) || 0;
     // only include rows that have at least a company name
     if (obj.co) rows.push(obj);
   });
@@ -760,8 +791,7 @@ async function loadWorksheet(wsName) {
 
     loading.style.display = 'none';
     populateFilters(ALL_ROWS);
-    buildExecStrip(ALL_ROWS);
-    render();
+    render();   // render calls buildExecStrip(filtered()) internally
 
     const now = new Date();
     lastRefresh.textContent = 'Last loaded: ' + now.toLocaleTimeString();
