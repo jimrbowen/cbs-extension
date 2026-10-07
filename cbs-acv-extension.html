@@ -595,7 +595,10 @@ const FIELD_MAP = {
   'APM_PRODUCT_LEVEL_2':              'l2',
   'L2':                               'l2',
   'Level 2':                          'l2',
-  // fiscal period — Tableau date parts from PDS
+  // fiscal period — Tableau date part names (YEAR/QUARTER/MONTH of field)
+  'YEAR(Close Date)':                 'cy',
+  'QUARTER(Close Date)':              'cq',
+  'MONTH(Close Date)':                'cm',
   'Year of Close Date':               'cy',
   'Quarter of Close Date':            'cq',
   'Month of Close Date':              'cm',
@@ -759,7 +762,7 @@ async function loadWorksheet(wsName) {
 
     // Use the first underlying table
     const logicalTableId = dataTable[0].id;
-    const opts = { maxRows: 100000 };
+    const opts = { maxRows: 100000, includeAllColumns: true };
     const fullData = await ws.getUnderlyingTableDataAsync(logicalTableId, opts);
 
     // Show all column names so we can confirm the exact field names
