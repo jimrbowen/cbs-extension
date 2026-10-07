@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CBS ACV Closed</title>
+
+  <!-- Tableau Dashboard Extensions API -->
+  <script src="https://extensions.tableausoftware.com/lib/tableauextensions-1.latest.min.js"></script>
+
+  <style>
+    /* ── Reset / base ─────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; font-family: 'Salesforce Sans', 'Helvetica Neue', Arial, sans-serif; font-size: 13px; color: #3e3e3c; background: #f4f6f8; }
+
+    /* ── Brand palette ────────────────────────────────────────────────── */
+    :root {
+      --navy:       #032D60;
+      --blue-mid:   #0B5CAB;
+      --blue-act:   #0076D3;
+      --blue-light: #9dc6e0;
+      --bg:         #f4f6f8;
+      --bg-white:   #ffffff;
+      --border:     #dddbda;
+      --text:       #3e3e3c;
+      --text-light: #706e6b;
+      --green:      #2e844a;
+      --red:        #c23934;
+    }
+
+    /* ── Cloud pill colors ────────────────────────────────────────────── */
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; color: #fff; white-space: nowrap; }
+    .pill-service    { background: #E15759; }
+    .pill-marketing  { background: #F28E2B; }
+    .pill-commerce   { background: #59A89C; }
+    .pill-slack      { background: #B07AA1; }
+    .pill-revenue    { background: #76B7B2; }
+    .pill-aidata     { background: #00B5F1; }
+    .pill-platform   { background: #4E79A7; }
+    .pill-other      { background: #888888; }
+
+    /* ── Layout ───────────────────────────────────────────────────────── */
+    #app { display: flex; height: 100vh; overflow: hidden; }
+
+    /* Sidebar */
+    #sidebar {
+      width: 220px; min-width: 220px;
+      background: var(--navy);
+      color: #fff;
+      display: flex; flex-direction: column;
+      padding: 16px 12px;
+      overflow-y: auto;
+    }
+    #sidebar h1 { font-size: 15px; font-weight: 700; margin-bottom: 4px; letter-spacing: 0.3px; }
+    #sidebar .sub { font-size: 11px; color: var(--blue-light); margin-bottom: 16px; }
+    .filter-label { font-size: 11px; font-weight: 600; color: var(--blue-light); text-transform: uppercase; letter-spacing: 0.5px; margin: 12px 0 4px; }
+    .filter-select {
+      width: 100%; padding: 5px 8px; border-radius: 4px; border: none;
+      background: rgba(255,255,255,0.12); color: #fff; font-size: 12px; cursor: pointer;
+      appearance: none;
+    }
+    .filter-select option { background: #032D60; color: #fff; }
+    .filter-select:focus { outline: 2px solid var(--blue-act); }
+
+    /* Metric cards */
+    .metric-cards { margin-top: 20px; display: flex; flex-direction: column; gap: 8px; }
+    .metric-card { background: rgba(255,255,255,0.10); border-radius: 6px; padding: 10px 12px; }
+    .metric-card .m-label { font-size: 10px; color: var(--blue-light); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; }
+    .metric-card .m-value { font-size: 20px; font-weight: 700; color: #fff; }
+    .metric-card .m-count { font-size: 11px; color: var(--blue-light); margin-top: 1px; }
+
+    /* ── Main ─────────────────────────────────────────────────────────── */
+    #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* Topbar */
+    #topbar {
+      background: var(--blue-mid);
+      color: #fff; padding: 8px 16px;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-shrink: 0;
+    }
+    #topbar .title { font-size: 14px; font-weight: 700; }
+    #topbar .meta  { font-size: 11px; color: var(--blue-light); }
+
+    /* Status bar */
+    #statusbar {
+      background: #fff; border-bottom: 1px solid var(--border);
+      padding: 6px 16px; font-size: 11px; color: var(--text-light);
+      display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+    }
+    #statusbar .dot { width: 8px; height: 8px; border-radius: 50%; background: #ccc; flex-shrink: 0; }
+    #statusbar .dot.ok { background: var(--green); }
+    #statusbar .dot.err { background: var(--red); }
+
+    /* Exec strip (summary row) */
+    #exec-strip {
+      background: #fff; border-bottom: 1px solid var(--border);
+      display: flex; gap: 0; flex-shrink: 0;
+    }
+    .exec-cell {
+      flex: 1; padding: 8px 14px; border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+    }
+    .exec-cell:last-child { border-right: none; }
+    .exec-cell .ec-label { font-size: 10px; text-transform: uppercase; color: var(--text-light); letter-spacing: 0.4px; }
+    .exec-cell .ec-value { font-size: 16px; font-weight: 700; color: var(--navy); }
+    .exec-cell .ec-sub   { font-size: 11px; color: var(--text-light); }
+
+    /* Filter bar */
+    #filterbar {
+      background: var(--bg); border-bottom: 1px solid var(--border);
+      padding: 6px 16px; display: flex; align-items: center; gap: 8px;
+      flex-shrink: 0; flex-wrap: wrap;
+    }
+    .filter-tag {
+      background: #fff; border: 1px solid var(--border); border-radius: 4px;
+      padding: 3px 8px; font-size: 11px; color: var(--text);
+      display: flex; align-items: center; gap: 4px; white-space: nowrap;
+    }
+    .filter-tag strong { color: var(--navy); }
+    #search-box {
+      margin-left: auto; padding: 4px 10px; border: 1px solid var(--border);
+      border-radius: 4px; font-size: 12px; width: 180px;
+    }
+    #search-box:focus { outline: 2px solid var(--blue-act); border-color: var(--blue-act); }
+
+    /* Table container */
+    #table-wrap { flex: 1; overflow: auto; }
+
+    table {
+      width: 100%; border-collapse: collapse; background: var(--bg-white);
+      font-size: 12px;
+    }
+    thead th {
+      position: sticky; top: 0; z-index: 2;
+      background: var(--navy); color: #fff;
+      padding: 7px 10px; text-align: left; font-weight: 600;
+      white-space: nowrap; cursor: pointer; user-select: none;
+    }
+    thead th:hover { background: var(--blue-mid); }
+    thead th .sort-icon { margin-left: 4px; opacity: 0.6; font-size: 10px; }
+    thead th.sort-asc  .sort-icon::after { content: ' ▲'; }
+    thead th.sort-desc .sort-icon::after { content: ' ▼'; }
+    thead th:not(.sort-asc):not(.sort-desc) .sort-icon::after { content: ' ⇅'; }
+
+    tbody tr { border-bottom: 1px solid var(--border); transition: background 0.1s; }
+    tbody tr:hover { background: #f0f4ff; }
+    tbody td { padding: 6px 10px; vertical-align: middle; }
+
+    /* company/opp column */
+    .col-opp .opp-company { font-weight: 600; color: var(--navy); }
+    .col-opp .opp-name    { font-size: 11px; color: var(--text-light); margin-top: 1px; }
+
+    /* ACV amount */
+    .col-acv { font-weight: 700; color: var(--text); text-align: right; white-space: nowrap; }
+
+    /* stage badge */
+    .stage-badge {
+      display: inline-block; padding: 2px 6px; border-radius: 3px;
+      font-size: 10px; font-weight: 600; background: #e8f4fd; color: var(--blue-act);
+      border: 1px solid var(--blue-light);
+    }
+    .stage-closed { background: #eaf5ea; color: var(--green); border-color: #aaddaa; }
+
+    /* Close date */
+    .col-date { white-space: nowrap; font-size: 11px; color: var(--text-light); }
+
+    /* Hierarchy */
+    .col-hier { font-size: 11px; color: var(--text-light); }
+
+    /* Empty / loading states */
+    #loading, #empty {
+      padding: 60px; text-align: center; color: var(--text-light); font-size: 14px;
+    }
+    #loading .spinner {
+      width: 32px; height: 32px; border: 3px solid var(--border);
+      border-top-color: var(--blue-act); border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin: 0 auto 12px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Error panel ──────────────────────────────────────────────────── */
+    #error-panel {
+      display: none;
+      margin: 16px; background: #fff8f7; border: 1px solid #f8aeaa;
+      border-radius: 6px; padding: 14px 16px; color: #c23934; font-size: 12px;
+    }
+    #error-panel strong { display: block; margin-bottom: 4px; }
+    #error-panel code { background: #f4f6f8; padding: 2px 4px; border-radius: 3px; font-size: 11px; color: #3e3e3c; }
+
+    /* ── Footer note ──────────────────────────────────────────────────── */
+    #footer {
+      background: #fff; border-top: 1px solid var(--border);
+      padding: 5px 16px; font-size: 10px; color: var(--text-light);
+      display: flex; justify-content: space-between; flex-shrink: 0;
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ══ SIDEBAR ══════════════════════════════════════════════════════ -->
+  <aside id="sidebar">
+    <h1>CBS Specialist</h1>
+    <div class="sub">ACV Closed — FY2027</div>
+
+    <div class="filter-label">AVP</div>
+    <select id="f-avp" class="filter-select"><option value="">All AVPs</option></select>
+
+    <div class="filter-label">RVP</div>
+    <select id="f-rvp" class="filter-select"><option value="">All RVPs</option></select>
+
+    <div class="filter-label">AE</div>
+    <select id="f-ae" class="filter-select"><option value="">All AEs</option></select>
+
+    <div class="filter-label">Fiscal Quarter</div>
+    <select id="f-fq" class="filter-select">
+      <option value="">All Quarters</option>
+      <option value="1">Q1</option>
+      <option value="2">Q2</option>
+      <option value="3">Q3</option>
+      <option value="4">Q4</option>
+    </select>
+
+    <div class="filter-label">Cloud</div>
+    <select id="f-cloud" class="filter-select"><option value="">All Clouds</option></select>
+
+    <!-- live metric cards — populated by JS -->
+    <div class="metric-cards">
+      <div class="metric-card">
+        <div class="m-label">Total ACV</div>
+        <div class="m-value" id="card-total">—</div>
+        <div class="m-count" id="card-count">— deals</div>
+      </div>
+      <div class="metric-card">
+        <div class="m-label">Avg Deal Size</div>
+        <div class="m-value" id="card-avg">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="m-label">% of Team</div>
+        <div class="m-value" id="card-pct">—</div>
+        <div class="m-count">filtered ÷ total</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ══ MAIN ═════════════════════════════════════════════════════════ -->
+  <div id="main">
+
+    <!-- Topbar -->
+    <div id="topbar">
+      <span class="title">ACV Closed</span>
+      <span class="meta" id="src-label">Connecting to datasource…</span>
+    </div>
+
+    <!-- Status bar -->
+    <div id="statusbar">
+      <div class="dot" id="status-dot"></div>
+      <span id="status-msg">Initializing Tableau Extensions API…</span>
+    </div>
+
+    <!-- Error panel (shown on fault) -->
+    <div id="error-panel">
+      <strong>Could not load data</strong>
+      <span id="error-detail"></span>
+    </div>
+
+    <!-- Exec summary strip — 5 cloud aggregates + total -->
+    <div id="exec-strip">
+      <!-- populated dynamically -->
+    </div>
+
+    <!-- Filter/search bar -->
+    <div id="filterbar">
+      <div class="filter-tag">Seg <strong>ESMB</strong></div>
+      <div class="filter-tag">OU <strong>AMER PACE</strong></div>
+      <div class="filter-tag">L5 <strong>Nicole Weatherbee</strong></div>
+      <div class="filter-tag">FY <strong>2027</strong></div>
+      <input id="search-box" type="text" placeholder="Search company or opp…" />
+    </div>
+
+    <!-- Table (or loading/empty state) -->
+    <div id="table-wrap">
+      <div id="loading">
+        <div class="spinner"></div>
+        Loading ACV data from Tableau datasource…
+      </div>
+      <div id="empty" style="display:none;">No closed deals match the current filters.</div>
+      <table id="acv-table" style="display:none;">
+        <thead>
+          <tr>
+            <th data-col="co" class="sort-asc">Company / Opp <span class="sort-icon"></span></th>
+            <th data-col="v"  style="text-align:right">ACV ($) <span class="sort-icon"></span></th>
+            <th data-col="cl">Cloud <span class="sort-icon"></span></th>
+            <th data-col="l2">L2 <span class="sort-icon"></span></th>
+            <th data-col="cq">FQ <span class="sort-icon"></span></th>
+            <th data-col="dt">Close Date <span class="sort-icon"></span></th>
+            <th data-col="sg">Stage <span class="sort-icon"></span></th>
+            <th data-col="av">AVP <span class="sort-icon"></span></th>
+            <th data-col="rv">RVP <span class="sort-icon"></span></th>
+            <th data-col="ae">AE <span class="sort-icon"></span></th>
+          </tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>
+
+    <div id="footer">
+      <span>Source: Specialist Pipeline and Forecasting RLS (Tableau Cloud)</span>
+      <span id="last-refresh">—</span>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════════════════════
+//  CBS ACV Closed — Tableau Dashboard Extension
+//
+//  SETUP NOTES:
+//  1. Host this file at a public HTTPS URL and update your .trex manifest.
+//  2. Add this extension to a Tableau Cloud dashboard that has a worksheet
+//     connected to "Specialist Pipeline and Forecasting RLS" PDS.
+//  3. On first load the extension will ask you to select the worksheet that
+//     contains the ACV Closed data.
+//
+//  FIELD MAPPING (matches sync_cbs_dashboard.py pull_acv_closed output):
+//    co  = ACCOUNT_NAME               (company)
+//    on_name = OPPORTUNITY_NAME
+//    v   = SUM(AMOUNT_USD)            (ACV $)
+//    cl  = cloud routing string       (cloud pill)
+//    l2  = LEVEL_2                    (geo/segment)
+//    cy  = fiscal year from close date
+//    cq  = fiscal quarter from close date
+//    cm  = fiscal month from close date
+//    dt  = close date (YYYY-MM-DD)
+//    av  = LEVEL_6 / AVP name
+//    rv  = LEVEL_7 / RVP name
+//    ae  = USER_NAME / AE name
+//    sg  = STAGENAME
+//    id  = OPPORTUNITY_ID
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── Cloud pill config ─────────────────────────────────────────────────────────
+const CLOUD_COLORS = {
+  'Service Cloud':   'pill-service',
+  'Marketing Cloud': 'pill-marketing',
+  'Commerce Cloud':  'pill-commerce',
+  'Slack':           'pill-slack',
+  'Revenue Cloud':   'pill-revenue',
+  'AI and Data':     'pill-aidata',
+  'Platform':        'pill-platform',
+};
+function cloudClass(cl) {
+  for (const k of Object.keys(CLOUD_COLORS)) {
+    if (cl && cl.toLowerCase().includes(k.toLowerCase())) return CLOUD_COLORS[k];
+  }
+  return 'pill-other';
+}
+
+// ── Amount formatter (matches fmt_m() in sync_cbs_dashboard.py) ───────────────
+function fmtM(v) {
+  const n = parseFloat(v) || 0;
+  if (Math.abs(n) >= 1e9) return '$' + (n / 1e9).toFixed(2) + 'B';
+  if (Math.abs(n) >= 1e6) return '$' + (n / 1e6).toFixed(2) + 'M';
+  if (Math.abs(n) >= 1e3) return '$' + (n / 1e3).toFixed(1) + 'K';
+  return '$' + Math.round(n).toLocaleString();
+}
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let ALL_ROWS   = [];   // raw rows from Tableau datasource
+let SORT_COL   = 'co';
+let SORT_DIR   = 1;    // 1=asc, -1=desc
+
+// ── DOM refs ──────────────────────────────────────────────────────────────────
+const fAvp    = document.getElementById('f-avp');
+const fRvp    = document.getElementById('f-rvp');
+const fAe     = document.getElementById('f-ae');
+const fFq     = document.getElementById('f-fq');
+const fCloud  = document.getElementById('f-cloud');
+const search  = document.getElementById('search-box');
+const tbody   = document.getElementById('table-body');
+const tbl     = document.getElementById('acv-table');
+const loading = document.getElementById('loading');
+const empty   = document.getElementById('empty');
+const errPanel = document.getElementById('error-panel');
+const errDetail = document.getElementById('error-detail');
+const statusDot = document.getElementById('status-dot');
+const statusMsg = document.getElementById('status-msg');
+const execStrip = document.getElementById('exec-strip');
+const cardTotal = document.getElementById('card-total');
+const cardCount = document.getElementById('card-count');
+const cardAvg   = document.getElementById('card-avg');
+const cardPct   = document.getElementById('card-pct');
+const lastRefresh = document.getElementById('last-refresh');
+const srcLabel  = document.getElementById('src-label');
+
+// ── Status helpers ────────────────────────────────────────────────────────────
+function setStatus(ok, msg) {
+  statusDot.className = 'dot ' + (ok ? 'ok' : 'err');
+  statusMsg.textContent = msg;
+}
+function showError(msg) {
+  errPanel.style.display = 'block';
+  errDetail.textContent = msg;
+  loading.style.display = 'none';
+  setStatus(false, 'Error — see details above');
+}
+
+// ── Column-header sort binding ────────────────────────────────────────────────
+document.querySelectorAll('thead th[data-col]').forEach(th => {
+  th.addEventListener('click', () => {
+    const col = th.dataset.col;
+    if (SORT_COL === col) { SORT_DIR *= -1; }
+    else { SORT_COL = col; SORT_DIR = 1; }
+    document.querySelectorAll('thead th').forEach(h => h.classList.remove('sort-asc', 'sort-desc'));
+    th.classList.add(SORT_DIR === 1 ? 'sort-asc' : 'sort-desc');
+    render();
+  });
+});
+
+// Filter/search events
+[fAvp, fRvp, fAe, fFq, fCloud].forEach(el => el.addEventListener('change', render));
+search.addEventListener('input', render);
+
+// ── Populate filter dropdowns from data ───────────────────────────────────────
+function populateFilters(rows) {
+  function opts(sel, vals) {
+    const cur = sel.value;
+    while (sel.options.length > 1) sel.remove(1);
+    [...vals].sort().forEach(v => {
+      if (!v) return;
+      const o = document.createElement('option');
+      o.value = v; o.textContent = v;
+      sel.appendChild(o);
+    });
+    if (cur) sel.value = cur;
+  }
+  opts(fAvp,   new Set(rows.map(r => r.av)));
+  opts(fRvp,   new Set(rows.map(r => r.rv)));
+  opts(fAe,    new Set(rows.map(r => r.ae)));
+  opts(fCloud, new Set(rows.map(r => r.cl)));
+}
+
+// ── Filter logic ──────────────────────────────────────────────────────────────
+function filtered() {
+  const avp   = fAvp.value;
+  const rvp   = fRvp.value;
+  const ae    = fAe.value;
+  const fq    = fFq.value;
+  const cloud = fCloud.value;
+  const q     = search.value.toLowerCase().trim();
+
+  return ALL_ROWS.filter(r => {
+    if (avp   && r.av !== avp)   return false;
+    if (rvp   && r.rv !== rvp)   return false;
+    if (ae    && r.ae !== ae)    return false;
+    if (fq    && String(r.cq) !== fq) return false;
+    if (cloud && r.cl !== cloud) return false;
+    if (q) {
+      const hay = (r.co + ' ' + (r.on_name || '')).toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+// ── Exec strip (cloud breakdown) ─────────────────────────────────────────────
+function buildExecStrip(rows) {
+  const clouds = {};
+  rows.forEach(r => {
+    clouds[r.cl] = (clouds[r.cl] || 0) + (parseFloat(r.v) || 0);
+  });
+  const total = rows.reduce((s, r) => s + (parseFloat(r.v) || 0), 0);
+
+  const sorted = Object.entries(clouds).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  execStrip.innerHTML = '';
+
+  // Total first
+  const tot = document.createElement('div');
+  tot.className = 'exec-cell';
+  tot.innerHTML = `<div class="ec-label">Total ACV</div>
+                   <div class="ec-value">${fmtM(total)}</div>
+                   <div class="ec-sub">${rows.length} deals</div>`;
+  execStrip.appendChild(tot);
+
+  sorted.forEach(([cl, sum]) => {
+    const pct = total > 0 ? ((sum / total) * 100).toFixed(0) : 0;
+    const cell = document.createElement('div');
+    cell.className = 'exec-cell';
+    cell.innerHTML = `<div class="ec-label">${cl || 'Other'}</div>
+                      <div class="ec-value">${fmtM(sum)}</div>
+                      <div class="ec-sub">${pct}% of total</div>`;
+    execStrip.appendChild(cell);
+  });
+}
+
+// ── Metric cards ─────────────────────────────────────────────────────────────
+function updateCards(rows) {
+  const sum  = rows.reduce((s, r) => s + (parseFloat(r.v) || 0), 0);
+  const allSum = ALL_ROWS.reduce((s, r) => s + (parseFloat(r.v) || 0), 0);
+  cardTotal.textContent = fmtM(sum);
+  cardCount.textContent = rows.length + ' deal' + (rows.length !== 1 ? 's' : '');
+  cardAvg.textContent   = rows.length ? fmtM(sum / rows.length) : '—';
+  cardPct.textContent   = allSum > 0 ? ((sum / allSum) * 100).toFixed(1) + '%' : '—';
+}
+
+// ── Table render ──────────────────────────────────────────────────────────────
+function render() {
+  const rows = filtered();
+
+  // sort
+  rows.sort((a, b) => {
+    let av = a[SORT_COL] ?? '', bv = b[SORT_COL] ?? '';
+    if (SORT_COL === 'v') { av = parseFloat(av) || 0; bv = parseFloat(bv) || 0; }
+    if (av < bv) return -SORT_DIR;
+    if (av > bv) return  SORT_DIR;
+    return 0;
+  });
+
+  updateCards(rows);
+
+  if (rows.length === 0) {
+    tbl.style.display   = 'none';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+  tbl.style.display   = 'table';
+
+  tbody.innerHTML = '';
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
+    const stageClass = (r.sg || '').toLowerCase().includes('closed') ? 'stage-closed' : '';
+
+    tr.innerHTML = `
+      <td class="col-opp">
+        <div class="opp-company">${esc(r.co)}</div>
+        <div class="opp-name">${esc(r.on_name || '')}</div>
+      </td>
+      <td class="col-acv">${fmtM(r.v)}</td>
+      <td><span class="pill ${cloudClass(r.cl)}">${esc(r.cl || 'Other')}</span></td>
+      <td class="col-hier">${esc(r.l2 || '')}</td>
+      <td style="white-space:nowrap">Q${r.cq || '?'}</td>
+      <td class="col-date">${fmtDate(r.dt)}</td>
+      <td><span class="stage-badge ${stageClass}">${esc(r.sg || '')}</span></td>
+      <td class="col-hier">${esc(r.av || '')}</td>
+      <td class="col-hier">${esc(r.rv || '')}</td>
+      <td class="col-hier">${esc(r.ae || '')}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+function fmtDate(dt) {
+  if (!dt) return '—';
+  const d = new Date(dt);
+  if (isNaN(d)) return dt;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// ── Tableau field name normalizer ─────────────────────────────────────────────
+// Maps flexible Tableau column names to our internal field keys.
+const FIELD_MAP = {
+  // account / opp
+  'Account Name':       'co',
+  'ACCOUNT_NAME':       'co',
+  'Opportunity Name':   'on_name',
+  'OPPORTUNITY_NAME':   'on_name',
+  'Opportunity ID':     'id',
+  'OPPORTUNITY_ID':     'id',
+  // ACV
+  'ACV':                'v',
+  'Amount USD':         'v',
+  'AMOUNT_USD':         'v',
+  'SUM(AMOUNT_USD)':    'v',
+  'Amount':             'v',
+  // cloud
+  'Cloud':              'cl',
+  'CLOUD_ROUTING':      'cl',
+  'Cloud Routing':      'cl',
+  // segment / L2
+  'L2':                 'l2',
+  'LEVEL_2':            'l2',
+  'Level 2':            'l2',
+  // fiscal
+  'Fiscal Year':        'cy',
+  'FISCAL_YEAR':        'cy',
+  'Fiscal Quarter':     'cq',
+  'FISCAL_QUARTER':     'cq',
+  'Fiscal Month':       'cm',
+  'FISCAL_MONTH':       'cm',
+  // close date
+  'Close Date':         'dt',
+  'CLOSE_DATE':         'dt',
+  // hierarchy
+  'AVP':                'av',
+  'LEVEL_6':            'av',
+  'Level 6':            'av',
+  'RVP':                'rv',
+  'LEVEL_7':            'rv',
+  'Level 7':            'rv',
+  'AE':                 'ae',
+  'USER_NAME':          'ae',
+  'AE Name':            'ae',
+  // stage
+  'Stage':              'sg',
+  'STAGENAME':          'sg',
+  'Stage Name':         'sg',
+  'Forecast Category':  'sg',
+};
+
+// ── Parse rows from a Tableau DataTable ──────────────────────────────────────
+function parseDataTable(dataTable) {
+  const cols = dataTable.columns;
+  const rows = [];
+
+  // Build index: tableau column index → our field key
+  const colMap = {};
+  cols.forEach((col, i) => {
+    const key = FIELD_MAP[col.fieldName] || FIELD_MAP[col.fieldName.trim()];
+    if (key) colMap[i] = key;
+  });
+
+  dataTable.data.forEach(row => {
+    const obj = {};
+    row.forEach((cell, i) => {
+      if (colMap[i] !== undefined) {
+        obj[colMap[i]] = cell.value;
+      }
+    });
+    // only include rows that have at least a company name
+    if (obj.co) rows.push(obj);
+  });
+  return rows;
+}
+
+// ── Tableau initialization ────────────────────────────────────────────────────
+async function init() {
+  try {
+    setStatus(false, 'Initializing…');
+    await tableau.extensions.initializeAsync({ configure });
+    setStatus(true, 'Connected');
+
+    const settings = tableau.extensions.settings.getAll();
+    const wsName   = settings['worksheetName'];
+
+    if (wsName) {
+      await loadWorksheet(wsName);
+    } else {
+      // no worksheet chosen yet — ask user to configure
+      configure();
+    }
+  } catch (err) {
+    showError('Extensions API init failed: ' + err.message);
+  }
+}
+
+// ── Configure dialog — pick a worksheet ───────────────────────────────────────
+function configure() {
+  // Build a simple inline worksheet picker (no separate config dialog URL needed)
+  const db = tableau.extensions.dashboardContent.dashboard;
+  const worksheets = db.worksheets.map(ws => ws.name);
+
+  if (worksheets.length === 0) {
+    showError('No worksheets found on this dashboard. Please add a worksheet connected to "Specialist Pipeline and Forecasting RLS" first.');
+    return;
+  }
+
+  // If only one worksheet, auto-select it
+  if (worksheets.length === 1) {
+    tableau.extensions.settings.set('worksheetName', worksheets[0]);
+    tableau.extensions.settings.saveAsync().then(() => loadWorksheet(worksheets[0]));
+    return;
+  }
+
+  // Multiple worksheets — show a simple overlay picker
+  const overlay = document.createElement('div');
+  overlay.style.cssText = `
+    position:fixed;inset:0;background:rgba(3,45,96,0.85);z-index:1000;
+    display:flex;align-items:center;justify-content:center;
+  `;
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:8px;padding:24px 28px;min-width:320px;max-width:90vw;">
+      <div style="font-size:15px;font-weight:700;color:#032D60;margin-bottom:6px;">Select Worksheet</div>
+      <div style="font-size:12px;color:#706e6b;margin-bottom:14px;">
+        Choose the worksheet connected to <strong>Specialist Pipeline and Forecasting RLS</strong>
+        that contains ACV Closed data.
+      </div>
+      <select id="ws-picker" style="width:100%;padding:6px 10px;border:1px solid #dddbda;border-radius:4px;font-size:13px;margin-bottom:14px;">
+        ${worksheets.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}
+      </select>
+      <button id="ws-ok" style="
+        background:#0076D3;color:#fff;border:none;border-radius:4px;
+        padding:8px 20px;font-size:13px;font-weight:600;cursor:pointer;width:100%;
+      ">Connect</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  document.getElementById('ws-ok').addEventListener('click', () => {
+    const chosen = document.getElementById('ws-picker').value;
+    tableau.extensions.settings.set('worksheetName', chosen);
+    tableau.extensions.settings.saveAsync().then(() => {
+      document.body.removeChild(overlay);
+      loadWorksheet(chosen);
+    });
+  });
+}
+
+// ── Load data from a worksheet ────────────────────────────────────────────────
+async function loadWorksheet(wsName) {
+  loading.style.display = 'block';
+  tbl.style.display     = 'none';
+  empty.style.display   = 'none';
+  setStatus(false, `Loading from "${wsName}"…`);
+
+  try {
+    const db   = tableau.extensions.dashboardContent.dashboard;
+    const ws   = db.worksheets.find(w => w.name === wsName);
+
+    if (!ws) {
+      showError(`Worksheet "${wsName}" not found. Click the configure button to re-select.`);
+      return;
+    }
+
+    srcLabel.textContent = `Worksheet: ${wsName}`;
+
+    // Get underlying data (all rows, not just visible/selected)
+    const dataTable = await ws.getUnderlyingTablesAsync();
+
+    if (!dataTable || dataTable.length === 0) {
+      showError('No underlying data tables found in this worksheet.');
+      return;
+    }
+
+    // Use the first underlying table
+    const logicalTableId = dataTable[0].id;
+    const opts = { maxRows: 100000 };
+    const fullData = await ws.getUnderlyingTableDataAsync(logicalTableId, opts);
+
+    ALL_ROWS = parseDataTable(fullData);
+
+    if (ALL_ROWS.length === 0) {
+      // Try getSummaryDataAsync as fallback
+      const summary = await ws.getSummaryDataAsync();
+      ALL_ROWS = parseDataTable(summary);
+    }
+
+    if (ALL_ROWS.length === 0) {
+      showError('Data loaded but no mappable rows found. Check that this worksheet uses "Specialist Pipeline and Forecasting RLS" and contains the expected fields (Account Name, Amount USD, Close Date, etc.).');
+      return;
+    }
+
+    loading.style.display = 'none';
+    populateFilters(ALL_ROWS);
+    buildExecStrip(ALL_ROWS);
+    render();
+
+    const now = new Date();
+    lastRefresh.textContent = 'Last loaded: ' + now.toLocaleTimeString();
+    setStatus(true, `${ALL_ROWS.length} rows loaded from "${wsName}"`);
+
+    // Re-load when worksheet filters change
+    ws.addEventListener(tableau.TableauEventType.FilterChanged,  () => loadWorksheet(wsName));
+    ws.addEventListener(tableau.TableauEventType.MarkSelectionChanged, () => loadWorksheet(wsName));
+
+  } catch (err) {
+    showError('Error reading worksheet data: ' + err.message + '. Ensure the extension has "full data" permission and the worksheet is fully loaded.');
+    console.error(err);
+  }
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
